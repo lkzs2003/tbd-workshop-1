@@ -1,0 +1,23 @@
+# Infracost usage file for TBD Workshop Phase 1
+# Docs: https://www.infracost.io/docs/features/usage_based_resources/
+# Example: https://github.com/infracost/infracost/blob/master/infracost-usage-example.yml
+
+version: 0.1
+
+resource_type_default_usage:
+  # Artifact Registry — Docker image repository for dbt/custom images
+  google_artifact_registry_repository:
+    storage_gb: 50              # ~50 GB of Docker layers stored
+    monthly_egress_data_transfer_gb:
+      same_continent: 20        # pulls within europe-west1
+      worldwide: 5              # occasional external pulls
+
+  # GCS buckets — used for Terraform state, Dataproc staging/temp, code, data
+  google_storage_bucket:
+    storage_gb: 10                        # average bucket size
+    monthly_class_a_operations: 10000     # write/list operations (terraform apply, uploads)
+    monthly_class_b_operations: 50000     # read operations (spark reads, DAG syncs)
+    monthly_data_retrieval_gb: 5          # data read back from buckets
+    monthly_egress_data_transfer_gb:
+      same_continent: 10                  # Dataproc reading from GCS in same region
+      worldwide: 1

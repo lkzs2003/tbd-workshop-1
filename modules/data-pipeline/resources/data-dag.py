@@ -11,22 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# Check out the Dataproc Serverless workloads with Cloud Composer guide at
-# https://cloud.google.com/composer/docs/composer-2/run-dataproc-workloads for more details.
-
-# [START composer_dataproc_create_batch]
-
-"""
-Examples below show how to use operators for managing Dataproc Serverless batch workloads.
- You use these operators in DAGs that create, delete, list, and get a Dataproc Serverless Spark batch workload.
-https://airflow.apache.org/docs/apache-airflow/stable/concepts/variables.html
-* project_id is the Google Cloud Project ID to use for the Cloud Dataproc Serverless.
-* bucket_name is the URI of a bucket where the main python file of the workload (spark-job.py) is located.
-* phs_cluster is the Persistent History Server cluster name.
-* image_name is the name and tag of the custom container image (image:tag).
-* metastore_cluster is the Dataproc Metastore service name.
-* region_name is the region where the Dataproc Metastore service is located.
-"""
 
 import datetime
 
@@ -37,41 +21,41 @@ from airflow.providers.google.cloud.operators.dataproc import (
 from airflow.utils.dates import days_ago
 
 PROJECT_ID = "{{ var.value.project_id }}"
-REGION = "{{ var.value.region_name}}"
+REGION = "{{ var.value.region_name }}"
 BUCKET = "{{ var.value.bucket_name }}"
 DATAPROC_CLUSTER = "{{ var.value.phs_cluster }}"
+JOB_FILE_URI = "gs://{{ var.value.bucket_name }}/spark-job.py"
 
-JOB_FILE_URI = "gs://{{var.value.bucket_name }}/spark-job.py"
+# Output path passed as argument to spark-job.py — avoids hardcoding the bucket name
+DATA_BUCKET = "gs://{{ var.value.project_id }}-data/data/shakespeare/"
 
 PYSPARK_JOB = {
     "reference": {"project_id": PROJECT_ID},
     "placement": {"cluster_name": DATAPROC_CLUSTER},
-    "pyspark_job": {"main_python_file_uri": JOB_FILE_URI,
-                    "properties":
-                        {
-                            "spark.driver.memory": "2g",
-                            "spark.executor.memory": "2g",
-                            "spark.executor.instances": "2"
-                        }
-                    },
-
+    "pyspark_job": {
+        "main_python_file_uri": JOB_FILE_URI,
+        "args": [DATA_BUCKET],
+        "properties": {
+            "spark.driver.memory": "2g",
+            "spark.executor.memory": "2g",
+            "spark.executor.instances": "2",
+        },
+    },
 }
 
-
 default_args = {
-    # Tell airflow to start one day ago, so that it runs as soon as you upload it
     "start_date": days_ago(1),
     "project_id": PROJECT_ID,
     "region": REGION,
 }
+
 with models.DAG(
-        "dataproc_job",  # The id you will see in the DAG airflow page
-        default_args=default_args,  # The interval with which to schedule the DAG
-        schedule_interval=datetime.timedelta(days=1),  # Override to match your needs
+    "dataproc_job",
+    default_args=default_args,
+    schedule_interval=datetime.timedelta(days=1),
 ) as dag:
     pyspark_task = DataprocSubmitJobOperator(
-        task_id="pyspark_task", job=PYSPARK_JOB
+        task_id="pyspark_task",
+        job=PYSPARK_JOB,
     )
     pyspark_task
-
-    # [END composer_dataproc_create_metastore_batch]

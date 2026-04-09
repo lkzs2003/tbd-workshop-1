@@ -1,4 +1,3 @@
-
 resource "google_project_service" "dataproc" {
   provider           = google
   service            = "dataproc.googleapis.com"
@@ -78,6 +77,7 @@ resource "google_dataproc_cluster" "tbd-dataproc-cluster" {
     google_storage_bucket_iam_member.staging_bucket_iam,
     google_storage_bucket_iam_member.temp_bucket_iam
   ]
+
   name    = "tbd-cluster"
   project = var.project_name
   region  = var.region
@@ -106,11 +106,13 @@ resource "google_dataproc_cluster" "tbd-dataproc-cluster" {
       internal_ip_only       = true
       service_account        = google_service_account.dataproc_sa.email
       service_account_scopes = ["cloud-platform"]
+
       metadata = {
         "PIP_PACKAGES" = "pandas<2 mlflow==2.3.1 google-cloud-storage==2.9.0 jupyterlab==3.6.3 dbt-core==1.8.7 dbt-spark==1.8.0"
         "vmDnsSetting" = "GlobalDefault"
       }
     }
+
     initialization_action {
       script      = "gs://goog-dataproc-initialization-actions-${var.region}/python/pip-install.sh"
       timeout_sec = "600"
@@ -119,6 +121,7 @@ resource "google_dataproc_cluster" "tbd-dataproc-cluster" {
     master_config {
       num_instances = 1
       machine_type  = var.machine_type
+
       disk_config {
         boot_disk_type    = "pd-standard"
         boot_disk_size_gb = 100
@@ -128,11 +131,23 @@ resource "google_dataproc_cluster" "tbd-dataproc-cluster" {
     worker_config {
       num_instances = 2
       machine_type  = var.machine_type
+
       disk_config {
         boot_disk_type    = "pd-standard"
         boot_disk_size_gb = 100
       }
+    }
 
+    # Task 12: preemptible (spot) worker nodes for cost reduction.
+    # Controlled by var.preemptible_worker_count (default 0 = disabled).
+    preemptible_worker_config {
+      num_instances  = var.preemptible_worker_count
+      preemptibility = "PREEMPTIBLE"
+
+      disk_config {
+        boot_disk_type    = "pd-standard"
+        boot_disk_size_gb = 100
+      }
     }
   }
 }

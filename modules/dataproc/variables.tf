@@ -24,3 +24,9 @@ variable "image_version" {
   type    = string
   default = "2.2.69-ubuntu22"
 }
+
+variable "preemptible_worker_count" {
+  type        = number
+  default     = 0
+  description = "Number of preemptible (spot) worker nodes to add to the Dataproc cluster. Set to 0 to disable."
+}
