@@ -138,15 +138,17 @@ resource "google_dataproc_cluster" "tbd-dataproc-cluster" {
       }
     }
 
-    # Task 12: preemptible (spot) worker nodes for cost reduction.
-    # Controlled by var.preemptible_worker_count (default 0 = disabled).
-    preemptible_worker_config {
-      num_instances  = var.preemptible_worker_count
-      preemptibility = "PREEMPTIBLE"
+    # Task 12: preemptible worker config — only included when count > 0
+    dynamic "preemptible_worker_config" {
+      for_each = var.preemptible_worker_count > 0 ? [1] : []
+      content {
+        num_instances  = var.preemptible_worker_count
+        preemptibility = "PREEMPTIBLE"
 
-      disk_config {
-        boot_disk_type    = "pd-standard"
-        boot_disk_size_gb = 100
+        disk_config {
+          boot_disk_type    = "pd-standard"
+          boot_disk_size_gb = 100
+        }
       }
     }
   }
