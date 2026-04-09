@@ -16,41 +16,43 @@
 from __future__ import print_function
 
 import sys
-from pyspark.sql import SparkSession
 
-# DATA_BUCKET is passed as the first argument from the Airflow DAG.
-# The DAG sets it to gs://<project_name>-data/data/shakespeare/
-if len(sys.argv) > 1:
-    DATA_BUCKET = sys.argv[1]
-else:
-    raise ValueError(
-        "DATA_BUCKET argument is required. "
-        "Pass the GCS output path as the first argument, e.g.: "
-        "gs://<project-name>-data/data/shakespeare/"
-    )
+# Guard: prevent Airflow DAG scanner from importing this file
+# (pyspark is only available on the Dataproc cluster, not in Airflow)
+if __name__ == '__main__':
+    from pyspark.sql import SparkSession
 
-spark = SparkSession.builder.appName('Shakespeare WordCount').getOrCreate()
+    # DATA_BUCKET is passed as the first argument from the Airflow DAG.
+    if len(sys.argv) > 1:
+        DATA_BUCKET = sys.argv[1]
+    else:
+        raise ValueError(
+            "DATA_BUCKET argument is required. "
+            "Pass the GCS output path as the first argument, e.g.: "
+            "gs://<project-name>-data/data/shakespeare/"
+        )
 
-table = 'bigquery-public-data.samples.shakespeare'
-df = spark.read.format('bigquery').load(table)
+    spark = SparkSession.builder.appName('Shakespeare WordCount').getOrCreate()
 
-# Only these columns will be read
-df = df.select('word', 'word_count')
+    table = 'bigquery-public-data.samples.shakespeare'
+    df = spark.read.format('bigquery').load(table)
 
-# The filters that are allowed will be automatically pushed down.
-# Those that are not will be computed client side
-df = df.where("word_count > 0 AND word NOT LIKE '%\\'%'")
+    # Only these columns will be read
+    df = df.select('word', 'word_count')
 
-# Further processing is done inside Spark
-df = df.groupBy('word').sum('word_count').withColumnRenamed('sum(word_count)', 'sum_word_count')
-df = df.orderBy(df['sum_word_count'].desc()).cache()
+    # The filters that are allowed will be automatically pushed down.
+    df = df.where("word_count > 0 AND word NOT LIKE '%\\'%'")
 
-print('The resulting schema is')
-df.printSchema()
+    # Further processing is done inside Spark
+    df = df.groupBy('word').sum('word_count').withColumnRenamed('sum(word_count)', 'sum_word_count')
+    df = df.orderBy(df['sum_word_count'].desc()).cache()
 
-print('The top words in shakespeare are')
-df.show()
+    print('The resulting schema is')
+    df.printSchema()
 
-df.write.mode("overwrite").orc(DATA_BUCKET)
+    print('The top words in shakespeare are')
+    df.show()
 
-spark.stop()
+    df.write.mode("overwrite").orc(DATA_BUCKET)
+
+    spark.stop()
