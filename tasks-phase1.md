@@ -53,7 +53,7 @@ Legend
 
 1. Authors:
 
-   Group nr: **1**
+   Group nr: **8**
 
    Link to forked repo: https://github.com/YOUR_GITHUB_USERNAME/tbd-workshop-1
 
