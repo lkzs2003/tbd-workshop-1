@@ -21,3 +21,4 @@ resource_type_default_usage:
     monthly_egress_data_transfer_gb:
       same_continent: 10                  # Dataproc reading from GCS in same region
       worldwide: 1
+# force infracost run
