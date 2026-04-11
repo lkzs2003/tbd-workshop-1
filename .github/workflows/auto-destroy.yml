@@ -3,7 +3,7 @@ name: Auto Destroy
 on:
   # Trigger 1: run every day at 20:00 UTC to ensure resources are cleaned up
   schedule:
-    - cron: '0 20 * * *'
+    - cron: '0 5 * * *'
 
   # Trigger 2: run when a PR is merged to master with [CLEANUP] in the title
   pull_request:
@@ -54,7 +54,7 @@ jobs:
         id: init
         run: terraform init -backend-config=env/backend.tfvars
 
-      - name: Terraform Destroy
+      - name: Terraform Destroy 
         id: destroy
         run: terraform destroy -no-color -var-file env/project.tfvars -auto-approve
         continue-on-error: false
