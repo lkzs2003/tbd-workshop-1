@@ -20,9 +20,9 @@ flowchart TD
     I --> N[📋 Task 7: Architecture diagram\nService accounts + buckets]
     I --> O[📋 Task 8: Infracost\nUsage profiles for\nartifact_registry + storage_bucket]
     I --> P[📋 Task 9: Spark job fix\nAirflow UI → DAG → debug\nFix spark-job.py]
-    I --> Q[📋 Task 10: BigQuery\nDataset + external table\non ORC files]
-    I --> R[📋 Task 11: Spot instances\npreemptible_worker_config\nin Dataproc module]
-    I --> S[📋 Task 12: Auto-destroy\nNew GH Actions workflow\nschedule + cleanup tag]
+    I --> Q[📋 Task 11: BigQuery\nDataset + external table\non ORC files]
+    I --> R[📋 Task 12: Spot instances\npreemptible_worker_config\nin Dataproc module]
+    I --> S[📋 Task 13: Auto-destroy\nNew GH Actions workflow\nschedule + cleanup tag]
 
     style A fill:#4a9eff,color:#fff
     style B fill:#4a9eff,color:#fff
@@ -53,35 +53,22 @@ Legend
 
 1. Authors:
 
-   Group nr: **8**
+   ***Group nr: 8***
 
-   Link to forked repo: https://github.com/YOUR_GITHUB_USERNAME/tbd-workshop-1
+   ***Link to forked repo: https://github.com/lkzs2003/tbd-workshop-1***
 
 2. Follow all steps in README.md.
 
 3. From available Github Actions select and run destroy on master branch.
 
-   Navigate to your forked repository → **Actions** tab → select **Destroy** workflow → click **Run workflow** → confirm on the `master` branch.
-
-   ![screenshot — GA Destroy workflow run](doc/figures/placeholder-destroy-ga.png)
+   ![screenshot — GA Destroy workflow run](doc/figures/task3-destroy-workflow.png)
 
 4. Create new git branch and:
 
    1. Modify tasks-phase1.md file.
    2. Create PR from this branch to **YOUR** master and merge it to make new release.
 
-   ```bash
-   git checkout -b task/update-phase1-docs
-   # edit tasks-phase1.md
-   git add tasks-phase1.md
-   git commit -m "feat: complete phase 1 tasks documentation"
-   git push origin task/update-phase1-docs
-   # open PR → merge → release workflow triggers automatically
-   ```
-
-   Screenshot from GA after successful application of release:
-
-   ![screenshot — GA release workflow](doc/figures/placeholder-release-ga.png)
+   ![screenshot — GA release workflow](doc/figures/task4-release-workflow.png)
 
 5. Analyze terraform code. Play with terraform plan, terraform graph to investigate different modules.
 
@@ -103,8 +90,8 @@ Legend
 
    **Dataproc Cluster (`google_dataproc_cluster.tbd-dataproc-cluster`)**
    A single-region cluster named `tbd-cluster` with:
-   - **Master**: 1× `e2-medium`, 100 GB pd-standard
-   - **Workers**: 2× `e2-medium`, 100 GB pd-standard
+   - **Master**: 1× `e2-standard-2`, 100 GB pd-standard
+   - **Workers**: 2× `e2-standard-2`, 100 GB pd-standard
    - **Preemptible workers**: controlled by `var.preemptible_worker_count` (default 0)
    - **Subnet**: `internal_ip_only = true` (no public IPs — IAP tunnel required for UI access)
    - **Optional components**: Jupyter
@@ -176,46 +163,46 @@ Legend
      --project=PROJECT_NAME \
      --zone=europe-west1-b \
      --tunnel-through-iap \
-     -- -L 8088:localhost:8088
+     -- -L 8089:localhost:8088
    ```
 
-   After running the command, open `http://localhost:8088` in your browser.
+   After running the command, open `http://localhost:8089` in your browser.
 
-   - **Port forwarded:** `8088` (YARN ResourceManager UI)
+   - **Local port:** `8089` → **Remote port:** `8088` (YARN ResourceManager UI)
    - **Flag used:** `--tunnel-through-iap` (required because `internal_ip_only = true`)
 
-   Screenshot of YARN UI:
+   ![screenshot — YARN UI on localhost:8089](doc/figures/task6-ssh-tunnel.png)
 
-   ![screenshot — YARN UI on localhost:8088](doc/figures/placeholder-yarn-ui.png)
+   ![screenshot — Cluster Manager details](doc/figures/task6-cluster-manager.png)
 
-7. Architecture diagram
+7. Draw an architecture diagram (e.g. in draw.io) that includes:
 
-   ### Service Accounts
+   1. Description of the components of service accounts
 
-   | Service Account | ID | Roles |
-   |---|---|---|
-   | Dataproc SA | `<project>-dataproc-sa` | `roles/dataproc.worker`, `roles/bigquery.dataEditor`, `roles/bigquery.user`, `roles/storage.objectAdmin` (staging + temp buckets) |
-   | Composer (Airflow) SA | `<project>-data` | `roles/composer.worker`, `roles/dataproc.editor`, `roles/iam.serviceAccountUser` |
-   | CI/CD (Workload Identity) SA | configured in `cicd_bootstrap` | `roles/editor` scoped to the project |
+      | Service Account | ID | Roles |
+      |---|---|---|
+      | Dataproc SA | `<project>-dataproc-sa` | `roles/dataproc.worker`, `roles/bigquery.dataEditor`, `roles/bigquery.user`, `roles/storage.objectAdmin` (staging + temp buckets) |
+      | Airflow SA | `<project>-airflow-sa` | `roles/dataproc.editor`, `roles/iam.serviceAccountUser`, `roles/storage.objectViewer` |
+      | CI/CD (Workload Identity) SA | configured in `cicd_bootstrap` | `roles/editor` scoped to the project |
 
-   ### GCS Buckets
+   2. List of buckets for disposal
 
-   | Bucket | Purpose |
-   |---|---|
-   | `<project>-state` | Terraform remote state (created in bootstrap) |
-   | `<project>-dataproc-staging` | Dataproc job logs, init scripts |
-   | `<project>-dataproc-temp` | Dataproc shuffle/temp data |
-   | `<project>-code` | PySpark job files (`spark-job.py`) |
-   | `<project>-data` | Output data from Spark jobs (ORC files) |
-   | Composer/Airflow GCS | DAG files synced from GitHub via git-sync |
+      | Bucket | Purpose |
+      |---|---|
+      | `<project>-state` | Terraform remote state (created in bootstrap, NOT destroyed by `terraform destroy`) |
+      | `<project>-dataproc-staging` | Dataproc job logs and init scripts |
+      | `<project>-dataproc-temp` | Dataproc shuffle/temp data |
+      | `<project>-code` | PySpark job files (`spark-job.py`) |
+      | `<project>-data` | Output data from Spark jobs (ORC files) |
 
-   Architecture diagram:
+      **Buckets for disposal (cleanup):** `<project>-dataproc-staging`, `<project>-dataproc-temp`, `<project>-code`, `<project>-data` — all destroyed by `terraform destroy`. The `<project>-state` bucket is managed separately and must be deleted manually after the project ends.
 
-   ![architecture diagram](doc/figures/placeholder-architecture.png)
+   ![architecture diagram](doc/figures/architecture.jpg)
 
 8. Create a new PR and add costs by entering the expected consumption into Infracost
 
-   ### Expected consumption entered (infracost-usage.yml)
+   For all the resources of type: `google_artifact_registry_repository`, `google_storage_bucket`
+   create a sample usage profiles and add it to the Infracost task in CI/CD pipeline. Usage file [example](https://github.com/infracost/infracost/blob/master/infracost-usage-example.yml)
 
    ```yaml
    version: 0.1
@@ -237,88 +224,100 @@ Legend
          worldwide: 1
    ```
 
-   Screenshot from Infracost output in GitHub Actions:
-
-   ![screenshot — Infracost PR comment](doc/figures/placeholder-infracost.png)
+   ![screenshot — Infracost PR comment](doc/figures/task8-infracost.png)
 
 9. Find and correct the error in spark-job.py
 
-   a) Screenshot of the `dataproc_job` DAG in Airflow UI (before fix — paused):
-
-   ![screenshot — DAG in Airflow UI](doc/figures/placeholder-dag-before.png)
-
-   b) The DAG failed. Relevant error message from Airflow task log:
-
-   ```
-   CalledProcessError: Command '['python', '/tmp/spark-job.py', ...]' returned non-zero exit status 1.
-   ...
-   pyspark.sql.utils.AnalysisException: Path does not exist: gs://tbd-2026l-9010-data/data/shakespeare/
-   ```
-
-   **Root cause:** The `DATA_BUCKET` variable in `spark-job.py` was hardcoded as `gs://tbd-2026l-9010-data/data/shakespeare/` — a path that belongs to a different student's project (`9010`). The actual data bucket for this project follows the pattern `gs://<project_name>-data/`. Because the job tried to write to a bucket it had no access to (and which doesn't exist in this project), it failed immediately.
-
-   **How it was found:** Opened the Airflow UI → clicked on the `pyspark_task` task instance → **Logs** tab → scrolled to the bottom of the Dataproc job YARN log, which showed the `AnalysisException` with the wrong bucket path.
-
-   c) Fix applied in `modules/data-pipeline/resources/spark-job.py`:
-
-   The hardcoded `DATA_BUCKET` was replaced with `sys.argv[1]`, so the bucket path is now passed dynamically by the Airflow DAG at runtime:
-
-   ```python
-   import sys
-
-   if len(sys.argv) > 1:
-       DATA_BUCKET = sys.argv[1]
-   else:
-       raise ValueError(
-           "DATA_BUCKET argument is required. "
-           "Pass the GCS output path as the first argument."
-       )
-   ```
-
-   The DAG (`data-dag.py`) was updated to pass the correct path:
-
-   ```python
-   DATA_BUCKET = "gs://{{ var.value.project_id }}-data/data/shakespeare/"
-
-   PYSPARK_JOB = {
-       ...
-       "pyspark_job": {
-           "main_python_file_uri": JOB_FILE_URI,
-           "args": [DATA_BUCKET],
-           ...
-       },
-   }
-   ```
-
-   Link to fixed file: [modules/data-pipeline/resources/spark-job.py](modules/data-pipeline/resources/spark-job.py)
-
-   After the fix, the file was re-uploaded to GCS:
-
+   After `terraform apply` completes, connect to the Airflow cluster:
    ```bash
-   gsutil cp modules/data-pipeline/resources/spark-job.py gs://PROJECT_NAME-code/spark-job.py
+   gcloud container clusters get-credentials airflow-cluster --zone europe-west1-b --project PROJECT_NAME
    ```
 
-   d) Screenshot of successful DAG run:
-
-   ![screenshot — successful DAG run](doc/figures/placeholder-dag-success.png)
-
-   Verification that ORC files were written:
-
-   ```bash
-   gsutil ls gs://PROJECT_NAME-data/data/shakespeare/
-   # Expected output:
-   # gs://PROJECT_NAME-data/data/shakespeare/part-00000-....orc
-   # gs://PROJECT_NAME-data/data/shakespeare/part-00001-....orc
-   # ...
+   Then check the external IP (AIRFLOW_EXTERNAL_IP) of the webserver service:
    ```
+   kubectl get svc -n airflow airflow-webserver
+   ```
+
+   > **Note:** If EXTERNAL-IP shows `<pending>`, wait a moment and retry — LoadBalancer IP allocation may take 1-2 minutes.
+
+   DAG files are synced automatically from your GitHub repo via git-sync sidecar.
+   Airflow variables and the `google_cloud_default` GCP connection are also configured by Terraform.
+
+   a) In the Airflow UI (`http://AIRFLOW_EXTERNAL_IP:8080`, login: `admin`/`admin`), find the `dataproc_job` DAG, unpause it and trigger it manually.
+
+      ![screenshot — DAG in Airflow UI](doc/figures/task9a-airflow-dag-list.png)
+
+   b) The DAG will fail. Examine the task logs and describe what the error is and how you found it.
+
+      ```
+      Broken DAG: [/opt/airflow/dags/repo/modules/data-pipeline/resources/spark-job.py]
+      ModuleNotFoundError: No module named 'pyspark'
+      ```
+
+      After adding the `if __name__ == '__main__':` guard, the DAG imported correctly but the pyspark_task failed with:
+
+      ```
+      pyspark.sql.utils.AnalysisException: Path does not exist: gs://tbd-2026l-9010-data/data/shakespeare/
+      ```
+
+      **Root cause:** Two bugs were present:
+      1. `spark-job.py` was imported by the Airflow scheduler (no `__main__` guard), causing `ModuleNotFoundError: No module named 'pyspark'`.
+      2. `DATA_BUCKET` was hardcoded as `gs://tbd-2026l-9010-data/...` — a path belonging to a different student's project (`9010`). The job tried to write to a non-existent bucket.
+
+      **How it was found:** Airflow UI → DAG Import Errors banner → clicked the error → showed `ModuleNotFoundError`. After fixing the guard, triggered the DAG → opened `pyspark_task` logs → scrolled to the bottom of the YARN log to find the `AnalysisException` with the wrong bucket path.
+
+      ![screenshot — DAG import error](doc/figures/task9b-dag-import-error.png)
+
+   c) Fix the error in `modules/data-pipeline/resources/spark-job.py` and re-upload the file to GCS:
+
+      ```bash
+      gsutil cp modules/data-pipeline/resources/spark-job.py gs://PROJECT_NAME-code/spark-job.py
+      ```
+
+      Then trigger the DAG again from the Airflow UI.
+
+      ```python
+      import sys
+
+      if __name__ == '__main__':
+          from pyspark.sql import SparkSession
+          if len(sys.argv) > 1:
+              DATA_BUCKET = sys.argv[1]
+          else:
+              raise ValueError("DATA_BUCKET argument is required.")
+          # ... rest of Spark job
+      ```
+
+      The DAG (`data-dag.py`) was updated to pass the correct bucket path as an argument:
+
+      ```python
+      DATA_BUCKET = "gs://{{ var.value.project_id }}-data/data/shakespeare/"
+      PYSPARK_JOB = {
+          "pyspark_job": {
+              "main_python_file_uri": JOB_FILE_URI,
+              "args": [DATA_BUCKET],
+              ...
+          },
+      }
+      ```
+
+      Link to fixed file: [modules/data-pipeline/resources/spark-job.py](modules/data-pipeline/resources/spark-job.py)
+
+   d) Verify the DAG completes successfully and check that ORC files were written to the data bucket:
+
+      ```bash
+      gsutil ls gs://PROJECT_NAME-data/data/shakespeare/
+      ```
+
+      ![screenshot — successful DAG run](doc/figures/task9d-dag-success.png)
 
 11. Create a BigQuery dataset and an external table using SQL
 
-    ### SQL code
+    Using the ORC data produced by the Spark job in task 9, create a BigQuery dataset and an external table.
 
+    Note: the dataset must be created in the same region as the GCS bucket (`europe-west1`), e.g.:
     ```bash
-    # Step 1: Create the dataset in europe-west1 (same region as the GCS bucket)
-    bq mk --dataset --location=europe-west1 PROJECT_NAME:shakespeare
+    bq mk --dataset --location=europe-west1 tbd-2026l-325072:shakespeare
     ```
 
     ```sql
@@ -363,14 +362,18 @@ Legend
 
     ```hcl
     # Task 12: preemptible (spot) worker nodes for cost reduction.
-    # Controlled by var.preemptible_worker_count (default 0 = disabled).
-    preemptible_worker_config {
-      num_instances  = var.preemptible_worker_count
-      preemptibility = "PREEMPTIBLE"
+    # Uses a dynamic block so the block is only emitted when count > 0,
+    # avoiding a dataproc.nodeGroups.create permission error on student accounts.
+    dynamic "preemptible_worker_config" {
+      for_each = var.preemptible_worker_count > 0 ? [1] : []
+      content {
+        num_instances  = var.preemptible_worker_count
+        preemptibility = "PREEMPTIBLE"
 
-      disk_config {
-        boot_disk_type    = "pd-standard"
-        boot_disk_size_gb = 100
+        disk_config {
+          boot_disk_type    = "pd-standard"
+          boot_disk_size_gb = 100
+        }
       }
     }
     ```
@@ -387,16 +390,27 @@ Legend
 
     To enable preemptible workers, set `preemptible_worker_count = 2` (or any desired number) when calling the module in the root `main.tf`.
 
-13. Triggered Terraform Destroy on Schedule or After PR Merge
+13. Triggered Terraform Destroy on Schedule or After PR Merge. Goal: make sure we never forget to clean up resources and burn money.
 
-    ### Workflow YAML (`.github/workflows/auto-destroy.yml`)
+    Add a new GitHub Actions workflow that:
+    1. runs terraform destroy -auto-approve
+    2. triggers automatically:
+       a) on a fixed schedule (e.g. every day at 20:00 UTC)
+       b) when a PR is merged to master containing [CLEANUP] tag in title
+
+    Steps:
+    1. Create file `.github/workflows/auto-destroy.yml`
+    2. Configure it to authenticate and destroy Terraform resources
+    3. Test the trigger (schedule or cleanup-tagged PR)
+
+    Hint: use the existing `.github/workflows/destroy.yml` as a starting point.
 
     ```yaml
     name: Auto Destroy
 
     on:
       schedule:
-        - cron: '0 20 * * *'
+        - cron: '0 3 * * *'
 
       pull_request:
         types:
@@ -450,9 +464,6 @@ Legend
             continue-on-error: false
     ```
 
-    Screenshot/log confirming auto-destroy ran:
+    ![screenshot — auto-destroy workflow log](doc/figures/task13-auto-destroy-workflows.png)
 
-    ![screenshot — auto-destroy workflow log](doc/figures/placeholder-auto-destroy.png)
-
-    **Why scheduling cleanup helps in this workshop:**
     Scheduling an automatic nightly destroy ensures that cloud resources are never left running overnight or over the weekend by accident, preventing unexpected GCP billing charges that would quickly exhaust the student credit.
