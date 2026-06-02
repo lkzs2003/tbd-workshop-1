@@ -6,7 +6,7 @@ on:
       scale:
         description: 'Dataset scale: debug (200k) / small (2M) / medium (10M)'
         required: true
-        default: 'medium'
+        default: 'small'
         type: choice
         options: [debug, small, medium]
 
@@ -22,14 +22,14 @@ jobs:
       id-token: write
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Set up Python 3.11
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Verify Java 17
+      - name: Verify Java
         run: java -version
 
       - name: Install benchmark dependencies
@@ -38,115 +38,146 @@ jobs:
             "pandas>=3.0,<3.1" \
             polars \
             duckdb \
-            "pyspark>=3.5" \
+            "pyspark>=3.5,<4.0" \
             faker \
             numpy \
             pyarrow \
-            psutil \
-            memory_profiler
+            psutil
 
       - name: Authenticate to Google Cloud
         id: auth
-        uses: google-github-actions/auth@v1
+        uses: google-github-actions/auth@v2
         with:
           token_format: access_token
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER_NAME }}
           service_account: ${{ secrets.GCP_WORKLOAD_IDENTITY_SA_EMAIL }}
 
       - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v1
+        uses: google-github-actions/setup-gcloud@v2
 
-      - name: Patch scale in benchmark script
+      - name: Set scale
         run: |
-          sed -i 's/N_ROWS     = 10_000_000/N_ROWS_MAP = {"debug": 200_000, "small": 2_000_000, "medium": 10_000_000}\nN_ROWS     = N_ROWS_MAP["${{ inputs.scale }}"]/' scripts/phase2_benchmark.py
+          python3 - << 'EOF'
+          import pathlib, re
+          scale = "${{ inputs.scale }}"
+          rows = {"debug": 200_000, "small": 2_000_000, "medium": 10_000_000}[scale]
+          p = pathlib.Path("scripts/phase2_benchmark.py")
+          src = p.read_text()
+          src = re.sub(r'N_ROWS\s*=\s*[\d_]+', f'N_ROWS = {rows}', src, count=1)
+          p.write_text(src)
+          print(f"Scale={scale} N_ROWS={rows:,}")
+          EOF
 
-      - name: Run benchmark
+      - name: Run local benchmark (Pandas / Polars / DuckDB / PySpark local)
         run: python scripts/phase2_benchmark.py 2>&1 | tee benchmark_output.txt
+        continue-on-error: false
 
       - name: Upload data to GCS for Dataproc
+        id: gcs_upload
         run: |
-          PROJECT=$(gcloud config get-value project 2>/dev/null || echo "tbd-2026l-325072")
-          BUCKET="gs://${PROJECT}-code"
-          echo "Uploading parquet files to $BUCKET ..."
-          gsutil -m cp -r data/phase2_26L/group_08/*.parquet $BUCKET/phase2/group_08/ || true
+          BUCKET="gs://tbd-2026l-325072-code"
+          echo "Uploading parquet files to $BUCKET/phase2/group_08/ ..."
+          gsutil -m cp data/phase2_26L/group_08/events.parquet     $BUCKET/phase2/group_08/
+          gsutil -m cp data/phase2_26L/group_08/dimension.parquet  $BUCKET/phase2/group_08/
           echo "GCS_BUCKET=$BUCKET" >> $GITHUB_ENV
+        continue-on-error: true
+
+      - name: Write Dataproc PySpark script
+        run: |
+          cat > /tmp/spark_phase2.py << 'SPARK_EOF'
+import time, json
+from pyspark.sql import SparkSession, functions as F
+
+spark = SparkSession.builder.appName("TBDPhase2Dataproc").getOrCreate()
+spark.sparkContext.setLogLevel("ERROR")
+
+BUCKET = "gs://tbd-2026l-325072-code"
+EVENTS = f"{BUCKET}/phase2/group_08/events.parquet"
+DIM    = f"{BUCKET}/phase2/group_08/dimension.parquet"
+
+def bench(func, n=2):
+    times = []
+    for _ in range(n):
+        t = time.perf_counter(); func(); times.append(time.perf_counter()-t)
+    return round(min(times), 3)
+
+results = {}
+
+results["Q1"] = bench(lambda: spark.read.parquet(EVENTS)
+    .filter(F.col("route_type").isin("bus","tram") & (F.col("delay_minutes") > 5))
+    .groupBy("route_id")
+    .agg(F.avg("delay_minutes").alias("avg"), F.count("*").alias("cnt"))
+    .orderBy(F.col("avg").desc()).limit(50).collect())
+
+results["Q2"] = bench(lambda: spark.read.parquet(EVENTS)
+    .withColumn("hr", F.hour("event_ts"))
+    .groupBy("route_type", "hr")
+    .agg(F.avg("delay_minutes").alias("avg_delay"),
+         F.sum(F.col("is_cancelled").cast("int")).alias("cancelled"))
+    .orderBy("route_type", "hr").collect())
+
+results["Q3"] = bench(lambda: spark.read.parquet(EVENTS)
+    .join(spark.read.parquet(DIM), "route_id", "left")
+    .groupBy("operator", "route_type", "is_express")
+    .agg(F.avg("delay_minutes").alias("avg_delay"), F.count("*").alias("cnt"))
+    .collect())
+
+print("DATAPROC_RESULTS:" + json.dumps(results))
+spark.stop()
+SPARK_EOF
+          gsutil cp /tmp/spark_phase2.py gs://tbd-2026l-325072-code/phase2/spark_phase2.py
+        continue-on-error: true
 
       - name: Submit PySpark job to Dataproc
+        id: dataproc_job
         run: |
-          PROJECT="tbd-2026l-325072"
-          BUCKET="${{ env.GCS_BUCKET }}"
-          cat > /tmp/spark_benchmark_dataproc.py << 'SPARK_EOF'
-          import time, json, sys
-          from pyspark.sql import SparkSession, functions as F
-
-          spark = SparkSession.builder.appName("TBDPhase2Dataproc").getOrCreate()
-          spark.sparkContext.setLogLevel("ERROR")
-
-          PROJECT = spark.conf.get("spark.phase2.project", "tbd-2026l-325072")
-          EVENTS  = f"gs://{PROJECT}-code/phase2/group_08/events.parquet"
-          DIM     = f"gs://{PROJECT}-code/phase2/group_08/dimension.parquet"
-
-          results = {}
-
-          def bench(func, n=2):
-              times = []
-              for _ in range(n):
-                  t = time.perf_counter(); func(); times.append(time.perf_counter()-t)
-              return round(min(times), 3)
-
-          results["Q1"] = bench(lambda: spark.read.parquet(EVENTS)
-              .filter(F.col("route_type").isin("bus","tram") & (F.col("delay_minutes")>5))
-              .groupBy("route_id").agg(F.avg("delay_minutes").alias("avg"),F.count("*").alias("cnt"))
-              .orderBy(F.col("avg").desc()).limit(50).collect())
-
-          results["Q2"] = bench(lambda: spark.read.parquet(EVENTS)
-              .withColumn("hr", F.hour("event_ts"))
-              .groupBy("route_type","hr").agg(F.avg("delay_minutes").alias("avg_delay"))
-              .orderBy("route_type","hr").collect())
-
-          results["Q3"] = bench(lambda: spark.read.parquet(EVENTS)
-              .join(spark.read.parquet(DIM),"route_id","left")
-              .groupBy("operator","route_type","is_express")
-              .agg(F.avg("delay_minutes").alias("avg_delay"),F.count("*").alias("cnt"))
-              .collect())
-
-          print("DATAPROC_RESULTS:" + json.dumps(results))
-          spark.stop()
-          SPARK_EOF
-
-          gsutil cp /tmp/spark_benchmark_dataproc.py $BUCKET/phase2/spark_benchmark_dataproc.py
-
           gcloud dataproc jobs submit pyspark \
-            $BUCKET/phase2/spark_benchmark_dataproc.py \
+            gs://tbd-2026l-325072-code/phase2/spark_phase2.py \
             --cluster=tbd-cluster \
             --region=europe-west1 \
-            --project=$PROJECT \
-            --properties="spark.phase2.project=$PROJECT" \
-            2>&1 | tee dataproc_output.txt || echo "Dataproc job failed or cluster not running"
+            --project=tbd-2026l-325072 \
+            2>&1 | tee dataproc_output.txt
+          echo "dataproc_exit=$?" >> $GITHUB_ENV
+        continue-on-error: true
 
       - name: Extract Dataproc results
         run: |
-          grep "DATAPROC_RESULTS:" dataproc_output.txt | sed 's/DATAPROC_RESULTS://' > dataproc_results.json || echo "{}" > dataproc_results.json
-          echo "Dataproc results:"
+          grep "DATAPROC_RESULTS:" dataproc_output.txt 2>/dev/null \
+            | sed 's/.*DATAPROC_RESULTS://' > dataproc_results.json \
+            || echo '{}' > dataproc_results.json
           cat dataproc_results.json
 
-      - name: Merge results
+      - name: Merge all results
         run: |
           python3 - << 'EOF'
-          import json, pathlib
-          bench = json.loads(pathlib.Path("benchmark_results.json").read_text())
-          try:
-              dp = json.loads(pathlib.Path("dataproc_results.json").read_text())
-              for q, t in dp.items():
-                  bench["results"].append({"engine":"PySpark Dataproc","query":q,"median_time_s":t})
-          except Exception as e:
-              print(f"No Dataproc results: {e}")
-          pathlib.Path("benchmark_results_final.json").write_text(json.dumps(bench, indent=2))
-          print(json.dumps(bench, indent=2))
-          EOF
+import json, pathlib
 
-      - name: Upload benchmark results as artifact
+bench_file = pathlib.Path("benchmark_results.json")
+if not bench_file.exists():
+    print("ERROR: benchmark_results.json not found")
+    exit(1)
+
+data = json.loads(bench_file.read_text())
+
+try:
+    dp = json.loads(pathlib.Path("dataproc_results.json").read_text())
+    for q, t in dp.items():
+        data["results"].append({
+            "engine": "PySpark Dataproc",
+            "query": q,
+            "median_time_s": t
+        })
+    print(f"Merged {len(dp)} Dataproc results")
+except Exception as e:
+    print(f"No Dataproc results: {e}")
+
+pathlib.Path("benchmark_results_final.json").write_text(json.dumps(data, indent=2))
+print(json.dumps(data, indent=2))
+EOF
+
+      - name: Upload benchmark results
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: phase2-benchmark-results
           path: |
