@@ -35,7 +35,7 @@ jobs:
       - name: Install benchmark dependencies
         run: |
           pip install -U \
-            "pandas>=3.0,<3.1" \
+            "pandas>=2.2" \
             polars \
             duckdb \
             "pyspark>=3.5,<4.0" \
@@ -43,6 +43,7 @@ jobs:
             numpy \
             pyarrow \
             psutil
+          python3 -c "import pandas, polars, duckdb, pyspark; print('pandas:', pandas.__version__, 'polars:', polars.__version__, 'duckdb:', duckdb.__version__, 'pyspark:', pyspark.__version__)"
 
       - name: Authenticate to Google Cloud
         id: auth
@@ -69,7 +70,9 @@ jobs:
           EOF
 
       - name: Run local benchmark (Pandas / Polars / DuckDB / PySpark local)
-        run: python scripts/phase2_benchmark.py 2>&1 | tee benchmark_output.txt
+        run: |
+          set -o pipefail
+          python scripts/phase2_benchmark.py 2>&1 | tee benchmark_output.txt
 
       - name: Upload data to GCS for Dataproc
         run: |
