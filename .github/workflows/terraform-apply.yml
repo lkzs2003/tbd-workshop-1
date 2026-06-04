@@ -1,0 +1,65 @@
+name: Terraform Apply
+
+# Manually-triggered apply. Kept separate from release.yml on purpose:
+# the semantic-release step there is brittle (tag conflicts) and was blocking
+# `terraform apply` from ever running. This workflow applies infrastructure
+# directly and supports a budget-friendly targeted apply (Dataproc only).
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Apply scope'
+        required: true
+        default: 'dataproc-only'
+        type: choice
+        options:
+          - dataproc-only   # VPC + Dataproc + data buckets (enough for Phase 2 Task 5)
+          - full            # everything (also GKE Airflow etc.)
+
+permissions: read-all
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.11.0
+
+      - id: auth
+        name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          token_format: access_token
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER_NAME }}
+          service_account: ${{ secrets.GCP_WORKLOAD_IDENTITY_SA_EMAIL }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Terraform Init
+        run: terraform init -backend-config=env/backend.tfvars
+
+      - name: Terraform Apply
+        run: |
+          if [ "${{ inputs.mode }}" = "dataproc-only" ]; then
+            TARGETS="-target=module.vpc -target=module.dataproc -target=module.data-pipelines"
+          else
+            TARGETS=""
+          fi
+          echo "Applying with targets: ${TARGETS:-<all>}"
+          terraform apply -no-color -var-file env/project.tfvars -auto-approve $TARGETS
+
+      - name: Show Dataproc cluster
+        if: always()
+        run: |
+          gcloud dataproc clusters list \
+            --region=europe-west1 \
+            --project=tbd-2026l-325072 || true
