@@ -1,0 +1,35 @@
+name: Phase 2 Extra Timings
+
+# Local-only polish run (no GCP): Polars eager/streaming for Q2/Q3 and PySpark
+# local timings at >=3 repetitions, for the Phase 2 notebook.
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify Java
+        run: java -version
+      - name: Install dependencies
+        run: pip install -U polars "pyspark>=3.5,<4.0" numpy pyarrow
+      - name: Run extra timings
+        run: |
+          set -o pipefail
+          python scripts/phase2_extra.py 2>&1 | tee extra_output.txt
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase2-extra
+          path: extra_output.txt
+          retention-days: 30
