@@ -1,0 +1,41 @@
+name: Phase 2 Memory & Pruning
+
+# Local-only remediation run (no GCP): measures peak memory in fresh processes,
+# Parquet pruning evidence and Pandas dtypes for the Phase 2 notebook.
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Verify Java
+        run: java -version
+
+      - name: Install dependencies
+        run: |
+          pip install -U "pandas>=2.2" polars duckdb "pyspark>=3.5,<4.0" numpy pyarrow psutil
+
+      - name: Run memory + pruning measurements
+        run: |
+          set -o pipefail
+          python scripts/phase2_memory_pruning.py 2>&1 | tee memory_pruning_output.txt
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase2-memory-pruning
+          path: memory_pruning_output.txt
+          retention-days: 30
