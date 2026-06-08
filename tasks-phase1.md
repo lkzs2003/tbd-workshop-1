@@ -20,9 +20,9 @@ flowchart TD
     I --> N[📋 Task 7: Architecture diagram\nService accounts + buckets]
     I --> O[📋 Task 8: Infracost\nUsage profiles for\nartifact_registry + storage_bucket]
     I --> P[📋 Task 9: Spark job fix\nAirflow UI → DAG → debug\nFix spark-job.py]
-    I --> Q[📋 Task 11: BigQuery\nDataset + external table\non ORC files]
-    I --> R[📋 Task 12: Spot instances\npreemptible_worker_config\nin Dataproc module]
-    I --> S[📋 Task 13: Auto-destroy\nNew GH Actions workflow\nschedule + cleanup tag]
+    I --> Q[📋 Task 10: BigQuery\nDataset + external table\non ORC files]
+    I --> R[📋 Task 11: Spot instances\npreemptible_worker_config\nin Dataproc module]
+    I --> S[📋 Task 12: Auto-destroy\nNew GH Actions workflow\nschedule + cleanup tag]
 
     style A fill:#4a9eff,color:#fff
     style B fill:#4a9eff,color:#fff
@@ -311,7 +311,7 @@ Legend
 
       ![screenshot — successful DAG run](doc/figures/task9d-dag-success.png)
 
-11. Create a BigQuery dataset and an external table using SQL
+10. Create a BigQuery dataset and an external table using SQL
 
     Using the ORC data produced by the Spark job in task 9, create a BigQuery dataset and an external table.
 
@@ -354,7 +354,7 @@ Legend
 
     ORC (Optimized Row Columnar) is a **self-describing** file format — the schema (column names, data types, nullability) is embedded directly in the file's metadata footer at write time. When BigQuery reads an ORC file, it extracts the schema from that embedded metadata automatically. This is fundamentally different from formats like CSV, where the schema must be specified externally because the file contains only raw text values with no type information.
 
-12. Add support for preemptible/spot instances in a Dataproc cluster
+11. Add support for preemptible/spot instances in a Dataproc cluster
 
     Link to modified file: [modules/dataproc/main.tf](modules/dataproc/main.tf)
 
@@ -390,7 +390,7 @@ Legend
 
     To enable preemptible workers, set `preemptible_worker_count = 2` (or any desired number) when calling the module in the root `main.tf`.
 
-13. Triggered Terraform Destroy on Schedule or After PR Merge. Goal: make sure we never forget to clean up resources and burn money.
+12. Triggered Terraform Destroy on Schedule or After PR Merge. Goal: make sure we never forget to clean up resources and burn money.
 
     Add a new GitHub Actions workflow that:
     1. runs terraform destroy -auto-approve
@@ -410,7 +410,7 @@ Legend
 
     on:
       schedule:
-        - cron: '0 3 * * *'
+        - cron: '0 5 * * *'
 
       pull_request:
         types:
